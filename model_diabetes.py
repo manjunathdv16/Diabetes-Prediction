@@ -86,14 +86,14 @@ def predict(
 
     latency_ms = round((time.time() - start) * 1000, 2)
 
-    # logging.info({
-    #     "request_id": request_id,
-    #     "prediction": int(prediction[0]),
-    #     "latency_ms": latency_ms,
-    #     "confidence": float(probability[1]),
-    #     "model": "diabetes_model",
-    #     "version": "1.0.0"
-    # })
+    logging.info({
+        "request_id": request_id,
+        "prediction": int(prediction[0]),
+        "latency_ms": latency_ms,
+        "confidence": float(probability[1]),
+        "model": "diabetes_model",
+        "version": "1.0.0"
+    })
 
     # Return result dictionary with prediction and confidence scores
     return {
