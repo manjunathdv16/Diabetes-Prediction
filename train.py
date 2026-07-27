@@ -27,6 +27,9 @@ from config import (
     N_ESTIMATORS,
     DIABETES_MODEL_FILE_PATH,
     S3_DATASOURCE_NAME,
+    TRAINING_SET_NAME,
+    TRAINING_SET_DESCRIPTION,
+    TARGET_COLUMNS,
 )
 
 # Display all configuration variables at startup for debugging
@@ -97,7 +100,29 @@ def train_model(df, data_source):
     """
     Train and save the diabetes prediction model.
     """
-
+    try:
+        from domino_data.training_sets.client import create_training_set_version
+    
+        result = create_training_set_version(
+            training_set_name=TRAINING_SET_NAME,
+            df=df,
+            description=TRAINING_SET_DESCRIPTION,
+            target_columns=TARGET_COLUMNS,
+        )
+        
+        print(result)
+        print(type(result))
+        
+        try:
+            print(vars(result))
+        except Exception:
+            print(dir(result))
+            
+        print(f"Training Set '{TRAINING_SET_NAME}' created successfully.")
+    
+    except Exception as ex:
+        print(f"Warning: Failed to create Training Set: {ex}")
+    
     # Separate features and target variable
     X = df.drop("Outcome", axis=1)
     y = df["Outcome"]
@@ -163,6 +188,7 @@ def train_model(df, data_source):
         "random_state": RANDOM_STATE,
         "test_size": TEST_SIZE,
         "n_estimators": N_ESTIMATORS,
+        "training_set": TRAINING_SET_NAME,
         "metrics": {
             "accuracy": round(float(accuracy), 4),
             "precision": round(float(precision), 4),
