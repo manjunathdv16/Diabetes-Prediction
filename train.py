@@ -6,6 +6,8 @@ import json
 import sklearn
 from datetime import datetime
 import pandas as pd
+from domino_data.training_sets.client import create_training_set_version
+from domino_data.training_sets.model import MonitoringMeta
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -101,13 +103,28 @@ def train_model(df, data_source):
     Train and save the diabetes prediction model.
     """
     try:
-        from domino_data.training_sets.client import create_training_set_version
-    
+        
+        monitoring_meta = MonitoringMeta(
+            timestamp_columns=[],
+            categorical_columns=["Outcome"],   # <-- important
+            ordinal_columns=[
+                "Pregnancies",
+                "Glucose",
+                "BloodPressure",
+                "SkinThickness",
+                "Insulin",
+                "BMI",
+                "DiabetesPedigreeFunction",
+                "Age",
+            ],
+        )
+        
         result = create_training_set_version(
             training_set_name=TRAINING_SET_NAME,
             df=df,
             description=TRAINING_SET_DESCRIPTION,
-            target_columns=TARGET_COLUMNS,
+            target_columns=["Outcome"],
+            monitoring_meta=monitoring_meta,
         )
         
         print(result)
