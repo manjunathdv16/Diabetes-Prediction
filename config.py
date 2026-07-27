@@ -14,7 +14,7 @@ DOMINO_PROJECT_NAME = os.environ.get("DOMINO_PROJECT_NAME")
 
 # Domino Datasets directory (where datasets are stored)
 DOMINO_DATASETS_DIR = os.environ.get('DOMINO_DATASETS_DIR', '/mnt/data')
-DATA_FILE_NAME = os.environ.get('DATA_FILE', 'diabetes.csv')
+DATA_FILE_NAME = os.environ.get('DATA_FILE_NAME', 'diabetes.csv')
 DATASETS_FILE_PATH = os.path.join(DOMINO_DATASETS_DIR, DOMINO_PROJECT_NAME, DATA_FILE_NAME)
 MIGRATION_DATASET_NAME = os.environ.get('MIGRATION_DATASET_NAME', 'diabetes-data')
 
