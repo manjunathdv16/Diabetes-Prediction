@@ -11,6 +11,8 @@ patient health metrics.
 Usage:
     python app.py              # Start the API server
     # Then visit: http://localhost:8888/docs (interactive API documentation)
+    https://lscloud.product-team-sandbox.domino.tech/apps-internal/<app-id>/docs
+    https://lscloud.product-team-sandbox.domino.tech/apps-internal/<app-id>/<endpoint> (Domino deployment)
 """
 
 import os
@@ -18,7 +20,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 
-from config import API_HOST, API_PORT
+from config import APP_API_HOST, APP_API_PORT
 from model_diabetes import predict as predict_diabetes
 
 # =============================================================================
@@ -159,8 +161,8 @@ if __name__ == "__main__":
     Run the FastAPI server when script is executed directly.
 
     The API will be available at:
-    - Main API: http://API_HOST:API_PORT/
-    - Interactive Docs: http://API_HOST:API_PORT/docs
-    - Alternative Docs: http://API_HOST:API_PORT/redoc
+    - Main API: http://APP_API_HOST:APP_API_PORT/
+    - Interactive Docs: http://APP_API_HOST:APP_API_PORT/docs
+    - Alternative Docs: http://APP_API_HOST:APP_API_PORT/redoc
     """
-    uvicorn.run(app, host=API_HOST, port=API_PORT)
+    uvicorn.run(app, host=APP_API_HOST, port=APP_API_PORT)

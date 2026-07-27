@@ -2,26 +2,37 @@ import os
 import io
 import argparse
 import joblib
+import json
+import sklearn
+from datetime import datetime
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+)
 
 from config import (
-    DATA_FILE,
-    DATA_SETS_FILE,
+    DATA_FILE_NAME,
+    DATASETS_FILE_PATH,
+    MODEL_NAME,
+    MODEL_VERSION,
     TEST_SIZE,
     RANDOM_STATE,
     N_ESTIMATORS,
-    DIABETES_MODEL_FILE,
+    DIABETES_MODEL_FILE_PATH,
     S3_DATASOURCE_NAME,
 )
-import config
 
 # Display all configuration variables at startup for debugging
 print("\n===== Configuration =====")
 
+import config
 for name in dir(config):
     if name.isupper():
         print(f"{name:25} = {getattr(config, name)}")
@@ -37,9 +48,9 @@ def load_dataset():
     print("Loading dataset from Domino Dataset...")
 
     # Read CSV file from configured path
-    df = pd.read_csv(DATA_SETS_FILE)
+    df = pd.read_csv(DATASETS_FILE_PATH)
 
-    print(f"Dataset loaded successfully from: {DATA_SETS_FILE}")
+    print(f"Dataset loaded successfully from: {DATASETS_FILE_PATH}")
     print(f"Dataset Shape: {df.shape}")
 
     return df
@@ -61,7 +72,7 @@ def load_s3_dataset():
 
     # Download file into memory buffer
     buffer = io.BytesIO()
-    object_store.download_fileobj(DATA_FILE, buffer)
+    object_store.download_fileobj(DATA_FILE_NAME, buffer)
     buffer.seek(0)
 
     # Load CSV from buffer
@@ -73,7 +84,7 @@ def load_s3_dataset():
 
     print(
         f"Dataset loaded successfully from AWS S3: "
-        f"s3://{bucket}/{subfolder}/{DATA_FILE}"
+        f"s3://{bucket}/{subfolder}/{DATA_FILE_NAME}"
     )
     print(f"Dataset Shape: {df.shape}")
 
@@ -82,7 +93,7 @@ def load_s3_dataset():
 
 # ============================= MODEL TRAINING =============================
 
-def train_model(df):
+def train_model(df, data_source):
     """
     Train and save the diabetes prediction model.
     """
@@ -99,7 +110,7 @@ def train_model(df):
         random_state=RANDOM_STATE,
     )
 
-    # Initialize Random Forest model with configured parameters
+    # Initialize Random Forest model
     model = RandomForestClassifier(
         n_estimators=N_ESTIMATORS,
         random_state=RANDOM_STATE,
@@ -107,24 +118,74 @@ def train_model(df):
 
     print("Training model...")
 
-    # Train the model on training data
+    # Train model
     model.fit(X_train, y_train)
 
-    # Make predictions on test set
+    # Predictions
     predictions = model.predict(X_test)
+    probabilities = model.predict_proba(X_test)[:, 1]
 
-    # Calculate model accuracy
+    # Evaluation metrics
     accuracy = accuracy_score(y_test, predictions)
+    precision = precision_score(y_test, predictions)
+    recall = recall_score(y_test, predictions)
+    f1 = f1_score(y_test, predictions)
+    roc_auc = roc_auc_score(y_test, probabilities)
 
-    print(f"Model Accuracy: {accuracy:.3f}")
+    print("\n========== Model Metrics ==========")
+    print(f"Accuracy : {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall   : {recall:.4f}")
+    print(f"F1 Score : {f1:.4f}")
+    print(f"ROC AUC  : {roc_auc:.4f}")
+    print("===================================\n")
 
-    # Create directory for model storage if it doesn't exist
-    os.makedirs(os.path.dirname(DIABETES_MODEL_FILE), exist_ok=True)
+    # Create models directory
+    os.makedirs(os.path.dirname(DIABETES_MODEL_FILE_PATH), exist_ok=True)
 
-    # Save trained model to disk
-    joblib.dump(model, DIABETES_MODEL_FILE)
+    # Save trained model
+    joblib.dump(model, DIABETES_MODEL_FILE_PATH)
 
-    print(f"Model saved successfully to: {DIABETES_MODEL_FILE}")
+    print(f"Model saved successfully to: {DIABETES_MODEL_FILE_PATH}")
+
+    # ---------------------------------------------------------------------
+    # Create metadata.json
+    # ---------------------------------------------------------------------
+
+    metadata = {
+        "model_name": MODEL_NAME,
+        "model_version": MODEL_VERSION,
+        "algorithm": type(model).__name__,
+        "training_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "training_dataset": DATA_FILE_NAME,
+        "training_source": data_source,
+        "sklearn_version": sklearn.__version__,
+        "random_state": RANDOM_STATE,
+        "test_size": TEST_SIZE,
+        "n_estimators": N_ESTIMATORS,
+        "metrics": {
+            "accuracy": round(float(accuracy), 4),
+            "precision": round(float(precision), 4),
+            "recall": round(float(recall), 4),
+            "f1_score": round(float(f1), 4),
+            "roc_auc": round(float(roc_auc), 4),
+        },
+        "features": X.columns.tolist(),
+        "artifact": {
+            "schema_version": "1.0",
+            "created_by": "train.py"
+        },
+    }
+
+    metadata_file = os.path.join(
+        os.path.dirname(DIABETES_MODEL_FILE_PATH),
+        "metadata.json",
+    )
+
+    with open(metadata_file, "w") as f:
+        json.dump(metadata, f, indent=4)
+
+    print(f"Metadata saved successfully to: {metadata_file}")
 
 
 # ============================== MAIN ENTRY ==================================
@@ -157,7 +218,7 @@ def main():
         df = load_dataset()
 
     # Train the model
-    train_model(df)
+    train_model(df, args.source)
 
     print("\nTraining completed successfully.")
 

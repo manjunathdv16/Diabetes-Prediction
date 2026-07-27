@@ -6,12 +6,27 @@ a prediction interface for diabetes risk assessment.
 """
 
 import joblib
-from config import DIABETES_MODEL_FILE
+import json
+import logging
+import time
+import uuid
+from config import (
+    DIABETES_MODEL_FILE_PATH,
+    DIABETES_MODEL_METADATA_FILE,
+    MODEL_NAME,
+    MODEL_VERSION,
+)
+
+logger = logging.getLogger("diabetes_model")
+logger.setLevel(logging.INFO)
 
 # ============================== MODEL LOADING ==================================
 # Load the pre-trained model from saved file
-model = joblib.load(DIABETES_MODEL_FILE)
+model = joblib.load(DIABETES_MODEL_FILE_PATH)
 
+# Load metadata
+with open(DIABETES_MODEL_METADATA_FILE, "r") as f:
+    metadata = json.load(f)
 
 # ============================== PREDICTION FUNCTION ============================
 
@@ -42,6 +57,9 @@ def predict(
         dict: Prediction result with prediction class and confidence scores
     """
 
+    request_id = str(uuid.uuid4())
+    start = time.time()
+
     # Make prediction on input features
     prediction = model.predict([[
         pregnancies,
@@ -66,10 +84,28 @@ def predict(
         age
     ]])[0]
 
+    latency_ms = round((time.time() - start) * 1000, 2)
+
+    # logging.info({
+    #     "request_id": request_id,
+    #     "prediction": int(prediction[0]),
+    #     "latency_ms": latency_ms,
+    #     "confidence": float(probability[1]),
+    #     "model": "diabetes_model",
+    #     "version": "1.0.0"
+    # })
+
     # Return result dictionary with prediction and confidence scores
     return {
+        "request_id": request_id,
         "prediction": int(prediction[0]),
         "diabetic": bool(prediction[0]),
+        "model": {
+            "name": metadata["model_name"],
+            "version": metadata["model_version"],
+            "algorithm": metadata["algorithm"],
+            "training_date": metadata["training_date"]
+        },
         "confidence": {
             "non_diabetic": round(float(probability[0]), 4),
             "diabetic": round(float(probability[1]), 4)
