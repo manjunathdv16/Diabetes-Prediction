@@ -14,3 +14,21 @@ LEGACY_SOURCE_DIR = os.environ.get('LEGACY_SOURCE_DIR', '/mnt/code/data')
 
 # Snapshot schedule (cron-like)
 SNAPSHOT_INTERVAL_HOURS = int(os.environ.get('SNAPSHOT_INTERVAL_HOURS', '24'))
+
+# =============================================================================
+# Model Training Configuration
+# =============================================================================
+DATA_FILE = "data/diabetes.csv"
+MODELS_DIR = "models"
+DIABETES_MODEL_FILE = os.path.join(MODELS_DIR, "diabetes_model.pkl")
+
+# Training hyperparameters
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
+N_ESTIMATORS = 200
+
+# =============================================================================
+# API Server Configuration
+# =============================================================================
+API_HOST = "0.0.0.0"
+API_PORT = 8888

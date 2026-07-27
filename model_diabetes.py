@@ -1,6 +1,8 @@
 import joblib
 
-model = joblib.load("models/diabetes_model.pkl")
+from config import DIABETES_MODEL_FILE
+
+model = joblib.load(DIABETES_MODEL_FILE)
 
 
 def predict(
