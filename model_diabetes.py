@@ -9,6 +9,7 @@ import joblib
 import json
 import logging
 import time
+import datetime
 import uuid
 from config import (
     DIABETES_MODEL_FILE_PATH,
@@ -16,6 +17,7 @@ from config import (
     MODEL_NAME,
     MODEL_VERSION,
 )
+from domino_data_capture.data_capture_client import DataCaptureClient
 
 logger = logging.getLogger("diabetes_model")
 logger.setLevel(logging.INFO)
@@ -27,6 +29,34 @@ model = joblib.load(DIABETES_MODEL_FILE_PATH)
 # Load metadata
 with open(DIABETES_MODEL_METADATA_FILE, "r") as f:
     metadata = json.load(f)
+
+# ==============================================================================
+# Prediction Capture Configuration
+# ==============================================================================
+
+FEATURE_NAMES = [
+    "pregnancies",
+    "glucose",
+    "blood_pressure",
+    "skin_thickness",
+    "insulin",
+    "bmi",
+    "diabetes_pedigree_function",
+    "age",
+]
+
+PREDICTION_NAMES = ["prediction"]
+
+METADATA_NAMES = [
+    "model_name",
+    "model_version",
+]
+
+data_capture_client = DataCaptureClient(
+    FEATURE_NAMES,
+    PREDICTION_NAMES,
+    METADATA_NAMES,
+)
 
 # ============================== PREDICTION FUNCTION ============================
 
@@ -83,6 +113,53 @@ def predict(
         diabetes_pedigree_function,
         age
     ]])[0]
+
+    # ------------------------------------------------------------------
+    # Capture prediction for Domino Model Monitoring
+    # ------------------------------------------------------------------
+    
+    feature_values = [
+        pregnancies,
+        glucose,
+        blood_pressure,
+        skin_thickness,
+        insulin,
+        bmi,
+        diabetes_pedigree_function,
+        age,
+    ]
+    
+    prediction_values = [
+        int(prediction[0]),
+    ]
+    
+    metadata_values = [
+        metadata["model_name"],
+        metadata["model_version"],
+    ]
+    
+    event_id = str(uuid.uuid4())
+    
+    event_time = datetime.datetime.now(
+        datetime.timezone.utc
+    ).isoformat()
+    
+    try:
+        data_capture_client.capturePrediction(
+            feature_values,
+            prediction_values,
+            metadata_values=metadata_values,
+            event_id=event_id,
+            timestamp=event_time,
+            prediction_probability=[
+                float(probability[0]),
+                float(probability[1]),
+            ],
+            sample_weight=1.0,
+        )
+    
+    except Exception as e:
+        logger.exception(f"Prediction capture failed: {e}")
 
     latency_ms = round((time.time() - start) * 1000, 2)
 
