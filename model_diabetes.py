@@ -86,7 +86,13 @@ def predict(
     Returns:
         dict: Prediction result with prediction class and confidence scores
     """
-
+    logging.info(
+        f"PREDICTION_DATA_DIRECTORY={os.getenv('PREDICTION_DATA_DIRECTORY')}"
+    )
+    
+    logging.info(
+        f"HOSTNAME={os.getenv('HOSTNAME')}"
+    )
     request_id = str(uuid.uuid4())
     start = time.time()
 
