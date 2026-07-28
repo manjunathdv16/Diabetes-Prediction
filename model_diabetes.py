@@ -60,14 +60,14 @@ with open(DIABETES_MODEL_METADATA_FILE, "r") as f:
 # ==============================================================================
 
 FEATURE_NAMES = [
-    "pregnancies",
-    "glucose",
-    "blood_pressure",
-    "skin_thickness",
-    "insulin",
-    "bmi",
-    "diabetes_pedigree_function",
-    "age",
+    "Pregnancies",
+    "Glucose",
+    "BloodPressure",
+    "SkinThickness",
+    "Insulin",
+    "BMI",
+    "DiabetesPedigreeFunction",
+    "Age",
 ]
 
 PREDICTION_NAMES = [
