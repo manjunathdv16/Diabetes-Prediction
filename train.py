@@ -40,8 +40,11 @@ def load_dataset():
     """
     Load dataset from Domino Dataset / local filesystem.
     """
+    print("Loading dataset from Domino Dataset...")
     # Read CSV file from configured path
     df = pd.read_csv(DATASETS_FILE_PATH)
+    print(f"Dataset loaded successfully from: {DATASETS_FILE_PATH}")
+    print(f"Dataset Shape: {df.shape}")
 
     return df
 
@@ -50,6 +53,7 @@ def load_s3_dataset():
     """
     Load dataset from Domino Data Source (AWS S3).
     """
+    print("Loading dataset from AWS S3 Data Source...")
     # Import Domino's S3 client
     from domino.data_sources import DataSourceClient
     import io
@@ -65,6 +69,15 @@ def load_s3_dataset():
 
     # Load CSV from buffer
     df = pd.read_csv(buffer)
+    # Get S3 bucket info for logging
+    bucket = object_store.config["bucket"]
+    subfolder = object_store.config["subfolder"]
+
+    print(
+        f"Dataset loaded successfully from AWS S3: "
+        f"s3://{bucket}/{subfolder}/{DATA_FILE_NAME}"
+    )
+    print(f"Dataset Shape: {df.shape}")
 
     return df
 
@@ -125,6 +138,8 @@ def train_model(df, data_source):
         random_state=RANDOM_STATE,
     )
 
+    print("Training model...")
+
     # Train model
     model.fit(X_train, y_train)
 
@@ -139,11 +154,21 @@ def train_model(df, data_source):
     f1 = f1_score(y_test, predictions)
     roc_auc = roc_auc_score(y_test, probabilities)
 
+    print("\n========== Model Metrics ==========")
+    print(f"Accuracy : {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall   : {recall:.4f}")
+    print(f"F1 Score : {f1:.4f}")
+    print(f"ROC AUC  : {roc_auc:.4f}")
+    print("===================================\n")
+
     # Create models directory
     os.makedirs(os.path.dirname(DIABETES_MODEL_FILE_PATH), exist_ok=True)
 
     # Save trained model
     joblib.dump(model, DIABETES_MODEL_FILE_PATH)
+
+    print(f"Model saved successfully to: {DIABETES_MODEL_FILE_PATH}")
 
     # ---------------------------------------------------------------------
     # Create metadata.json
@@ -183,6 +208,7 @@ def train_model(df, data_source):
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=4)
 
+    print(f"Metadata saved successfully to: {metadata_file}")
 
 # ============================== MAIN ENTRY ==================================
 
@@ -205,6 +231,8 @@ def main():
 
     args = parser.parse_args()
 
+    print(f"\nUsing data source: {args.source}\n")
+
     # Load data from selected source
     if args.source == "aws":
         df = load_s3_dataset()
@@ -213,6 +241,8 @@ def main():
 
     # Train the model
     train_model(df, args.source)
+
+    print("\nModel Training completed successfully.")
 
 
 if __name__ == "__main__":
