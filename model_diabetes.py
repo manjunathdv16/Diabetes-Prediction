@@ -15,6 +15,7 @@ import logging
 import datetime
 
 import joblib
+import pandas as pd
 
 from config import (
     DIABETES_MODEL_FILE_PATH,
@@ -37,7 +38,9 @@ if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
     handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(message)s"
+        )
     )
     logger.addHandler(handler)
 
@@ -114,30 +117,58 @@ def predict(
         dict
     """
 
-    # ----------------------------------------------------------------------
-    # Temporary debugging (keep until monitoring starts working)
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Temporary diagnostics
+    # ------------------------------------------------------------------
 
     logger.info(
         f"PREDICTION_DATA_DIRECTORY={os.getenv('PREDICTION_DATA_DIRECTORY')}"
     )
-
     logger.info(
         f"HOSTNAME={os.getenv('HOSTNAME')}"
     )
-
     logger.info(
         f"SCRAPE_LOCATION={utils.get_scrape_location()}"
     )
-
-    # ----------------------------------------------------------------------
 
     request_id = str(uuid.uuid4())
     event_id = request_id
 
     start = time.time()
 
-    features = [[
+    # ------------------------------------------------------------------
+    # Create DataFrame (prevents sklearn feature-name warning)
+    # ------------------------------------------------------------------
+
+    input_df = pd.DataFrame(
+        [[
+            pregnancies,
+            glucose,
+            blood_pressure,
+            skin_thickness,
+            insulin,
+            bmi,
+            diabetes_pedigree_function,
+            age,
+        ]],
+        columns=FEATURE_NAMES,
+    )
+
+    prediction = model.predict(input_df)
+    probability = model.predict_proba(input_df)[0]
+
+    prediction_value = int(prediction[0])
+
+    latency_ms = round(
+        (time.time() - start) * 1000,
+        2,
+    )
+
+    # ------------------------------------------------------------------
+    # Variables required by Domino Prediction Capture
+    # ------------------------------------------------------------------
+
+    feature_values = [
         pregnancies,
         glucose,
         blood_pressure,
@@ -146,19 +177,24 @@ def predict(
         bmi,
         diabetes_pedigree_function,
         age,
-    ]]
+    ]
 
-    prediction = model.predict(features)
-    probability = model.predict_proba(features)[0]
+    prediction_values = [
+        prediction_value,
+    ]
 
-    prediction_value = int(prediction[0])
+    metadata_values = [
+        metadata["model_name"],
+        metadata["model_version"],
+    ]
 
-    latency_ms = round((time.time() - start) * 1000, 2)
+    event_time = datetime.datetime.now(
+        datetime.timezone.utc
+    ).isoformat()
 
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Domino Prediction Capture
-    # ----------------------------------------------------------------------
-
+    # ------------------------------------------------------------------
     try:
 
         capture_result = data_capture_client.capturePrediction(
@@ -173,53 +209,123 @@ def predict(
             ],
             sample_weight=1.0,
         )
-    
-        logger.info(f"Capture Result: {capture_result}")
+
+        logger.info("=" * 70)
+        logger.info("Prediction Capture Executed")
+        logger.info("=" * 70)
+
+        logger.info(f"Capture Result : {capture_result}")
 
         scrape_file = utils.get_scrape_location()
-    
-        logger.info(f"Scrape file path: {scrape_file}")
-        logger.info(f"Scrape file exists: {os.path.exists(scrape_file)}")
+
+        logger.info(f"Scrape File : {scrape_file}")
+
         logger.info(
-            f"Scrape dir exists: {os.path.exists('/var/scrape')}"
+            f"Scrape Directory Exists : "
+            f"{os.path.exists('/var/scrape')}"
         )
+
         logger.info(
-            f"Scrape dir writable: {os.access('/var/scrape', os.W_OK)}"
+            f"Scrape Directory Writable : "
+            f"{os.access('/var/scrape', os.W_OK)}"
         )
+
         logger.info(
-            f"Scrape file exists after capture: {os.path.exists(scrape_file)}"
+            f"Scrape File Exists : "
+            f"{os.path.exists(scrape_file)}"
         )
-    
+
+        if os.path.exists(scrape_file):
+
+            logger.info(
+                f"Scrape File Size : "
+                f"{os.path.getsize(scrape_file)} bytes"
+            )
+
+            try:
+
+                with open(scrape_file, "r") as f:
+
+                    lines = f.readlines()
+
+                logger.info(
+                    f"Scrape File Lines : {len(lines)}"
+                )
+
+                if lines:
+                    logger.info(
+                        "Last Scrape Record:"
+                    )
+                    logger.info(lines[-1].strip())
+
+            except Exception:
+                logger.exception(
+                    "Unable to read scrape file."
+                )
+
+        else:
+
+            logger.warning(
+                "Prediction capture completed but "
+                "scrape file was not created."
+            )
+
         logger.info(
-            f"Prediction captured successfully | "
-            f"request_id={request_id} "
-            f"event_id={event_id} "
-            f"prediction={prediction_value}"
+            f"Request ID : {request_id}"
         )
-    
+
+        logger.info(
+            f"Event ID : {event_id}"
+        )
+
+        logger.info(
+            f"Prediction : {prediction_value}"
+        )
+
+        logger.info(
+            f"Probability : "
+            f"{float(probability[1]):.4f}"
+        )
+
+        logger.info("=" * 70)
+
     except Exception:
-        logger.exception("Prediction capture failed")
 
-    # ----------------------------------------------------------------------
+        logger.exception(
+            "Prediction capture failed."
+        )
+
+    # ------------------------------------------------------------------
     # Request Logging
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
+    logger.info("=" * 70)
+    logger.info("Prediction Request Completed")
     logger.info(
-        {
-            "request_id": request_id,
-            "prediction": prediction_value,
-            "latency_ms": latency_ms,
-            "confidence": float(probability[1]),
-            "model": metadata["model_name"],
-            "version": metadata["model_version"],
-        }
+        json.dumps(
+            {
+                "request_id": request_id,
+                "event_id": event_id,
+                "prediction": prediction_value,
+                "diabetic": bool(prediction_value),
+                "confidence": {
+                    "non_diabetic": round(float(probability[0]), 4),
+                    "diabetic": round(float(probability[1]), 4),
+                },
+                "latency_ms": latency_ms,
+                "model": metadata["model_name"],
+                "version": metadata["model_version"],
+            },
+            indent=2,
+        )
     )
+    logger.info("=" * 70)
 
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # API Response
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
-    return {
+    response = {
         "request_id": request_id,
         "prediction": prediction_value,
         "diabetic": bool(prediction_value),
@@ -234,3 +340,5 @@ def predict(
             "diabetic": round(float(probability[1]), 4),
         },
     }
+
+    return response
