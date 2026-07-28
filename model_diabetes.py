@@ -5,6 +5,7 @@ This module loads a pre-trained RandomForestClassifier model and provides
 a prediction interface for diabetes risk assessment.
 """
 
+import os
 import joblib
 import json
 import logging
