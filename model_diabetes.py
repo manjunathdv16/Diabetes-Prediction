@@ -157,6 +157,15 @@ def predict(
             ],
             sample_weight=1.0,
         )
+        logger.info(
+            "Prediction capture succeeded",
+            extra={
+                "event_id": event_id,
+                "request_id": request_id,
+                "model": metadata["model_name"],
+                "version": metadata["model_version"],
+            },
+        )
     
     except Exception as e:
         logger.exception(f"Prediction capture failed: {e}")
