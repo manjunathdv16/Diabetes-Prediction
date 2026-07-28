@@ -161,35 +161,44 @@ def predict(
 
     try:
 
-        data_capture_client.capturePrediction(
-            feature_values=features[0],
-            prediction_values=[prediction_value],
-            metadata_values=[
-                metadata["model_name"],
-                metadata["model_version"],
-            ],
+        capture_result = data_capture_client.capturePrediction(
+            feature_values=feature_values,
+            prediction_values=prediction_values,
+            metadata_values=metadata_values,
             event_id=event_id,
-            timestamp=datetime.datetime.now(
-                datetime.timezone.utc
-            ).isoformat(),
+            timestamp=event_time,
             prediction_probability=[
                 float(probability[0]),
                 float(probability[1]),
             ],
             sample_weight=1.0,
         )
+    
+        logger.info(f"Capture Result: {capture_result}")
 
+        scrape_file = utils.get_scrape_location()
+    
+        logger.info(f"Scrape file path: {scrape_file}")
+        logger.info(f"Scrape file exists: {os.path.exists(scrape_file)}")
+        logger.info(
+            f"Scrape dir exists: {os.path.exists('/var/scrape')}"
+        )
+        logger.info(
+            f"Scrape dir writable: {os.access('/var/scrape', os.W_OK)}"
+        )
+        logger.info(
+            f"Scrape file exists after capture: {os.path.exists(scrape_file)}"
+        )
+    
         logger.info(
             f"Prediction captured successfully | "
             f"request_id={request_id} "
+            f"event_id={event_id} "
             f"prediction={prediction_value}"
         )
-
+    
     except Exception:
-
-        logger.exception(
-            "Prediction capture failed"
-        )
+        logger.exception("Prediction capture failed")
 
     # ----------------------------------------------------------------------
     # Request Logging
