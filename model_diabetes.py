@@ -11,7 +11,6 @@ import os
 import json
 import time
 import uuid
-import logging
 import datetime
 
 import joblib
@@ -25,24 +24,6 @@ from config import (
 from domino_data_capture.data_capture_client import DataCaptureClient
 from domino_data_capture import utils
 
-
-# ==============================================================================
-# Logging
-# ==============================================================================
-
-logger = logging.getLogger("diabetes_model")
-logger.setLevel(logging.INFO)
-logger.propagate = False
-
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s %(levelname)s %(message)s"
-        )
-    )
-    logger.addHandler(handler)
 
 
 # ==============================================================================
@@ -71,7 +52,7 @@ FEATURE_NAMES = [
 ]
 
 PREDICTION_NAMES = [
-    "prediction",
+    "Outcome",  # must match train.py's TrainingSet target_columns exactly
 ]
 
 METADATA_NAMES = [
@@ -84,17 +65,6 @@ data_capture_client = DataCaptureClient(
     PREDICTION_NAMES,
     METADATA_NAMES,
 )
-
-logger.info("=" * 70)
-logger.info("Diabetes Prediction Model Loaded")
-logger.info(f"Model Name       : {metadata['model_name']}")
-logger.info(f"Model Version    : {metadata['model_version']}")
-logger.info(f"Algorithm        : {metadata['algorithm']}")
-logger.info(f"Training Date    : {metadata['training_date']}")
-logger.info(f"Capture Dev Mode : {data_capture_client.is_dev_mode}")
-logger.info(f"Scrape Location  : {utils.get_scrape_location()}")
-logger.info("=" * 70)
-
 
 # ==============================================================================
 # Prediction Function
@@ -116,20 +86,6 @@ def predict(
     Returns:
         dict
     """
-
-    # ------------------------------------------------------------------
-    # Temporary diagnostics
-    # ------------------------------------------------------------------
-
-    logger.info(
-        f"PREDICTION_DATA_DIRECTORY={os.getenv('PREDICTION_DATA_DIRECTORY')}"
-    )
-    logger.info(
-        f"HOSTNAME={os.getenv('HOSTNAME')}"
-    )
-    logger.info(
-        f"SCRAPE_LOCATION={utils.get_scrape_location()}"
-    )
 
     request_id = str(uuid.uuid4())
     event_id = request_id
@@ -197,7 +153,7 @@ def predict(
     # ------------------------------------------------------------------
     try:
 
-        capture_result = data_capture_client.capturePrediction(
+        data_capture_client.capturePrediction(
             feature_values=feature_values,
             prediction_values=prediction_values,
             metadata_values=metadata_values,
@@ -207,119 +163,12 @@ def predict(
                 float(probability[0]),
                 float(probability[1]),
             ],
-            sample_weight=1.0,
+            sample_weight=[1.0],  # API expects Array[float], not a bare float
         )
 
-        logger.info("=" * 70)
-        logger.info("Prediction Capture Executed")
-        logger.info("=" * 70)
-
-        logger.info(f"Capture Result : {capture_result}")
-
-        scrape_file = utils.get_scrape_location()
-
-        logger.info(f"Scrape File : {scrape_file}")
-
-        logger.info(
-            f"Scrape Directory Exists : "
-            f"{os.path.exists('/var/scrape')}"
-        )
-
-        logger.info(
-            f"Scrape Directory Writable : "
-            f"{os.access('/var/scrape', os.W_OK)}"
-        )
-
-        logger.info(
-            f"Scrape File Exists : "
-            f"{os.path.exists(scrape_file)}"
-        )
-
-        if os.path.exists(scrape_file):
-
-            logger.info(
-                f"Scrape File Size : "
-                f"{os.path.getsize(scrape_file)} bytes"
-            )
-
-            try:
-
-                with open(scrape_file, "r") as f:
-
-                    lines = f.readlines()
-
-                logger.info(
-                    f"Scrape File Lines : {len(lines)}"
-                )
-
-                if lines:
-                    logger.info(
-                        "Last Scrape Record:"
-                    )
-                    logger.info(lines[-1].strip())
-
-            except Exception:
-                logger.exception(
-                    "Unable to read scrape file."
-                )
-
-        else:
-
-            logger.warning(
-                "Prediction capture completed but "
-                "scrape file was not created."
-            )
-
-        logger.info(
-            f"Request ID : {request_id}"
-        )
-
-        logger.info(
-            f"Event ID : {event_id}"
-        )
-
-        logger.info(
-            f"Prediction : {prediction_value}"
-        )
-
-        logger.info(
-            f"Probability : "
-            f"{float(probability[1]):.4f}"
-        )
-
-        logger.info("=" * 70)
-
-    except Exception:
-
-        logger.exception(
-            "Prediction capture failed."
-        )
-
-    # ------------------------------------------------------------------
-    # Request Logging
-    # ------------------------------------------------------------------
-
-    logger.info("=" * 70)
-    logger.info("Prediction Request Completed")
-    logger.info(
-        json.dumps(
-            {
-                "request_id": request_id,
-                "event_id": event_id,
-                "prediction": prediction_value,
-                "diabetic": bool(prediction_value),
-                "confidence": {
-                    "non_diabetic": round(float(probability[0]), 4),
-                    "diabetic": round(float(probability[1]), 4),
-                },
-                "latency_ms": latency_ms,
-                "model": metadata["model_name"],
-                "version": metadata["model_version"],
-            },
-            indent=2,
-        )
-    )
-    logger.info("=" * 70)
+    except Exception as exc:
+        print(f"WARNING: capturePrediction failed for event_id={event_id} -- "
+              f"this prediction will NOT appear in Model Monitor. Error: {exc}")
 
     # ------------------------------------------------------------------
     # API Response
