@@ -1,35 +1,56 @@
 """
 Diabetes Prediction Model Module.
 
-This module loads a pre-trained RandomForestClassifier model and provides
-a prediction interface for diabetes risk assessment.
+Loads the trained RandomForestClassifier model and exposes the
+predict() function used by Domino Model API endpoints.
+
+Also captures prediction events for Domino Model Monitoring.
 """
 
 import os
-import joblib
 import json
-import logging
 import time
-import datetime
 import uuid
+import logging
+import datetime
+
+import joblib
+
 from config import (
     DIABETES_MODEL_FILE_PATH,
     DIABETES_MODEL_METADATA_FILE,
-    MODEL_NAME,
-    MODEL_VERSION,
 )
+
 from domino_data_capture.data_capture_client import DataCaptureClient
+from domino_data_capture import utils
+
+
+# ==============================================================================
+# Logging
+# ==============================================================================
 
 logger = logging.getLogger("diabetes_model")
 logger.setLevel(logging.INFO)
+logger.propagate = False
 
-# ============================== MODEL LOADING ==================================
-# Load the pre-trained model from saved file
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    )
+    logger.addHandler(handler)
+
+
+# ==============================================================================
+# Model Loading
+# ==============================================================================
+
 model = joblib.load(DIABETES_MODEL_FILE_PATH)
 
-# Load metadata
 with open(DIABETES_MODEL_METADATA_FILE, "r") as f:
     metadata = json.load(f)
+
 
 # ==============================================================================
 # Prediction Capture Configuration
@@ -46,7 +67,9 @@ FEATURE_NAMES = [
     "age",
 ]
 
-PREDICTION_NAMES = ["prediction"]
+PREDICTION_NAMES = [
+    "prediction",
+]
 
 METADATA_NAMES = [
     "model_name",
@@ -59,7 +82,20 @@ data_capture_client = DataCaptureClient(
     METADATA_NAMES,
 )
 
-# ============================== PREDICTION FUNCTION ============================
+logger.info("=" * 70)
+logger.info("Diabetes Prediction Model Loaded")
+logger.info(f"Model Name       : {metadata['model_name']}")
+logger.info(f"Model Version    : {metadata['model_version']}")
+logger.info(f"Algorithm        : {metadata['algorithm']}")
+logger.info(f"Training Date    : {metadata['training_date']}")
+logger.info(f"Capture Dev Mode : {data_capture_client.is_dev_mode}")
+logger.info(f"Scrape Location  : {utils.get_scrape_location()}")
+logger.info("=" * 70)
+
+
+# ==============================================================================
+# Prediction Function
+# ==============================================================================
 
 def predict(
     pregnancies,
@@ -72,60 +108,36 @@ def predict(
     age,
 ):
     """
-    Predict diabetes risk based on patient health metrics.
-
-    Args:
-        pregnancies: Number of times pregnant
-        glucose: Plasma glucose concentration (mg/dL)
-        blood_pressure: Diastolic blood pressure (mm Hg)
-        skin_thickness: Triceps skin fold thickness (mm)
-        insulin: 2-Hour serum insulin (mu U/ml)
-        bmi: Body mass index (kg/m²)
-        diabetes_pedigree_function: Genetic factor score
-        age: Age in years
+    Predict diabetes risk.
 
     Returns:
-        dict: Prediction result with prediction class and confidence scores
+        dict
     """
-    logging.info(
+
+    # ----------------------------------------------------------------------
+    # Temporary debugging (keep until monitoring starts working)
+    # ----------------------------------------------------------------------
+
+    logger.info(
         f"PREDICTION_DATA_DIRECTORY={os.getenv('PREDICTION_DATA_DIRECTORY')}"
     )
-    
-    logging.info(
+
+    logger.info(
         f"HOSTNAME={os.getenv('HOSTNAME')}"
     )
+
+    logger.info(
+        f"SCRAPE_LOCATION={utils.get_scrape_location()}"
+    )
+
+    # ----------------------------------------------------------------------
+
     request_id = str(uuid.uuid4())
+    event_id = request_id
+
     start = time.time()
 
-    # Make prediction on input features
-    prediction = model.predict([[
-        pregnancies,
-        glucose,
-        blood_pressure,
-        skin_thickness,
-        insulin,
-        bmi,
-        diabetes_pedigree_function,
-        age
-    ]])
-
-    # Get prediction probabilities
-    probability = model.predict_proba([[
-        pregnancies,
-        glucose,
-        blood_pressure,
-        skin_thickness,
-        insulin,
-        bmi,
-        diabetes_pedigree_function,
-        age
-    ]])[0]
-
-    # ------------------------------------------------------------------
-    # Capture prediction for Domino Model Monitoring
-    # ------------------------------------------------------------------
-    
-    feature_values = [
+    features = [[
         pregnancies,
         glucose,
         blood_pressure,
@@ -134,73 +146,82 @@ def predict(
         bmi,
         diabetes_pedigree_function,
         age,
-    ]
-    
-    prediction_values = [
-        int(prediction[0]),
-    ]
-    
-    metadata_values = [
-        metadata["model_name"],
-        metadata["model_version"],
-    ]
-    
-    event_id = str(uuid.uuid4())
-    
-    event_time = datetime.datetime.now(
-        datetime.timezone.utc
-    ).isoformat()
-    
+    ]]
+
+    prediction = model.predict(features)
+    probability = model.predict_proba(features)[0]
+
+    prediction_value = int(prediction[0])
+
+    latency_ms = round((time.time() - start) * 1000, 2)
+
+    # ----------------------------------------------------------------------
+    # Domino Prediction Capture
+    # ----------------------------------------------------------------------
+
     try:
+
         data_capture_client.capturePrediction(
-            feature_values,
-            prediction_values,
-            metadata_values=metadata_values,
+            feature_values=features[0],
+            prediction_values=[prediction_value],
+            metadata_values=[
+                metadata["model_name"],
+                metadata["model_version"],
+            ],
             event_id=event_id,
-            timestamp=event_time,
+            timestamp=datetime.datetime.now(
+                datetime.timezone.utc
+            ).isoformat(),
             prediction_probability=[
                 float(probability[0]),
                 float(probability[1]),
             ],
             sample_weight=1.0,
         )
+
         logger.info(
-            "Prediction capture succeeded",
-            extra={
-                "event_id": event_id,
-                "request_id": request_id,
-                "model": metadata["model_name"],
-                "version": metadata["model_version"],
-            },
+            f"Prediction captured successfully | "
+            f"request_id={request_id} "
+            f"prediction={prediction_value}"
         )
-    
-    except Exception as e:
-        logger.exception(f"Prediction capture failed: {e}")
 
-    latency_ms = round((time.time() - start) * 1000, 2)
+    except Exception:
 
-    logging.info({
-        "request_id": request_id,
-        "prediction": int(prediction[0]),
-        "latency_ms": latency_ms,
-        "confidence": float(probability[1]),
-        "model": "diabetes_model",
-        "version": "1.0.0"
-    })
+        logger.exception(
+            "Prediction capture failed"
+        )
 
-    # Return result dictionary with prediction and confidence scores
+    # ----------------------------------------------------------------------
+    # Request Logging
+    # ----------------------------------------------------------------------
+
+    logger.info(
+        {
+            "request_id": request_id,
+            "prediction": prediction_value,
+            "latency_ms": latency_ms,
+            "confidence": float(probability[1]),
+            "model": metadata["model_name"],
+            "version": metadata["model_version"],
+        }
+    )
+
+    # ----------------------------------------------------------------------
+    # API Response
+    # ----------------------------------------------------------------------
+
     return {
         "request_id": request_id,
-        "prediction": int(prediction[0]),
-        "diabetic": bool(prediction[0]),
+        "prediction": prediction_value,
+        "diabetic": bool(prediction_value),
         "model": {
             "name": metadata["model_name"],
             "version": metadata["model_version"],
             "algorithm": metadata["algorithm"],
-            "training_date": metadata["training_date"]
+            "training_date": metadata["training_date"],
         },
         "confidence": {
             "non_diabetic": round(float(probability[0]), 4),
-            "diabetic": round(float(probability[1]), 4)
-        }
+            "diabetic": round(float(probability[1]), 4),
+        },
     }
