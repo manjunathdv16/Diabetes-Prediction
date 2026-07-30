@@ -52,8 +52,8 @@ DIABETES_MODEL_METADATA_FILE = os.path.join(
 MODEL_NAME = os.environ.get("MODEL_NAME", "Diabetes Prediction Model")
 MODEL_VERSION = os.environ.get("MODEL_VERSION", "1.0.0")
 
-TRAINING_SET_NAME = "diabetes-training-set-v3"
-TRAINING_SET_DESCRIPTION = "Training data for Diabetes Prediction Model"
+TRAINING_SET_NAME = os.environ.get("TRAINING_SET_NAME", "diabetes-training-set-v3")
+TRAINING_SET_DESCRIPTION = os.environ.get("TRAINING_SET_DESCRIPTION", "Training data for Diabetes Prediction Model")
 TARGET_COLUMNS = ["Outcome"]
 
 # =============================================================================
